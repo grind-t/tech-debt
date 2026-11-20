@@ -6,7 +6,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import overload
 
-from pydantic import BaseModel
+from pydantic import TypeAdapter
 
 from tech_debt._stateless_workflows.search_tech_debt import AgentSession
 
@@ -19,15 +19,15 @@ class CodexSession(AgentSession):
         self._lock = asyncio.Lock()
 
     @overload
-    async def next_turn[Response: BaseModel](
-        self, prompt: str, schema: type[Response]
+    async def next_turn[Response](
+        self, prompt: str, schema: TypeAdapter[Response]
     ) -> Response: ...
 
     @overload
     async def next_turn(self, prompt: str, schema: None = None) -> str: ...
 
-    async def next_turn[Response: BaseModel](
-        self, prompt: str, schema: type[Response] | None = None
+    async def next_turn[Response](
+        self, prompt: str, schema: TypeAdapter[Response] | None = None
     ) -> Response | str:
         """Start the session or continue it, optionally validating the response."""
         async with self._lock:
@@ -37,11 +37,23 @@ class CodexSession(AgentSession):
                 if self._session_id is not None:
                     command.append("resume")
                 command.append("--json")
+                wrapped = False
                 if schema is not None:
+                    output_schema = schema.json_schema()
+                    wrapped = output_schema.get("type") != "object"
+                    if wrapped:
+                        definitions = output_schema.pop("$defs", {})
+                        output_schema = {
+                            "type": "object",
+                            "properties": {"result": output_schema},
+                            "required": ["result"],
+                            "additionalProperties": False,
+                            "$defs": definitions,
+                        }
                     schema_path = Path(directory) / "schema.json"
                     await asyncio.to_thread(
                         schema_path.write_text,
-                        json.dumps(schema.model_json_schema()),
+                        json.dumps(output_schema),
                         encoding="utf-8",
                     )
                     command.extend(["--output-schema", str(schema_path)])
@@ -91,6 +103,8 @@ class CodexSession(AgentSession):
                 response = await asyncio.to_thread(
                     response_path.read_text, encoding="utf-8"
                 )
-                return (
-                    response if schema is None else schema.model_validate_json(response)
-                )
+                if schema is None:
+                    return response
+                if wrapped:
+                    response = json.dumps(json.loads(response)["result"])
+                return schema.validate_json(response)

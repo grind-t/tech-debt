@@ -3,7 +3,9 @@ from pathlib import Path
 from unittest.mock import AsyncMock, Mock
 
 import pytest
+from pydantic import TypeAdapter
 
+from tech_debt._entities.defect import Defect
 from tech_debt._entities.path_distribution import PathDistribution
 from tech_debt._entities.tech_debt_search_prompts import (
     DISTRIBUTE_PATHS_PROMPT,
@@ -22,15 +24,16 @@ def test_search_tech_debt_creates_search_sessions_and_one_distributor(subtests):
     }
     for name, parallelism in cases.items():
         with subtests.test(msg=name, parallelism=parallelism):
-            distribution = PathDistribution(
-                scopes=[[Path(f"src/part_{index}")] for index in range(parallelism)]
-            )
+            distribution = [[Path(f"src/part_{index}")] for index in range(parallelism)]
             distributor = Mock(
                 spec_set=AgentSession,
                 next_turn=AsyncMock(return_value=distribution),
             )
             search_sessions = [
-                Mock(spec_set=AgentSession, next_turn=AsyncMock())
+                Mock(
+                    spec_set=AgentSession,
+                    next_turn=AsyncMock(return_value=[]),
+                )
                 for _ in range(parallelism)
             ]
             create_session = Mock(side_effect=[distributor, *search_sessions])
@@ -41,7 +44,10 @@ def test_search_tech_debt_creates_search_sessions_and_one_distributor(subtests):
 
 
 def test_search_tech_debt_skips_distribution_for_single_search_session():
-    session = Mock(spec_set=AgentSession, next_turn=AsyncMock())
+    session = Mock(
+        spec_set=AgentSession,
+        next_turn=AsyncMock(return_value=[]),
+    )
     create_session = Mock(side_effect=[session])
 
     asyncio.run(search_tech_debt(create_session, [Path("src")], parallelism=1))
@@ -56,7 +62,7 @@ def test_search_tech_debt_skips_distribution_for_single_search_session():
 
 
 def test_search_tech_debt_distributes_paths_before_creating_search_sessions():
-    distribution = PathDistribution(scopes=[[Path("src/a")], [Path("src/b")]])
+    distribution = [[Path("src/a")], [Path("src/b")]]
 
     async def distribute(*args, **kwargs):
         assert create_session.call_count == 1
@@ -66,7 +72,11 @@ def test_search_tech_debt_distributes_paths_before_creating_search_sessions():
         spec_set=AgentSession, next_turn=AsyncMock(side_effect=distribute)
     )
     search_sessions = [
-        Mock(spec_set=AgentSession, next_turn=AsyncMock()) for _ in range(2)
+        Mock(
+            spec_set=AgentSession,
+            next_turn=AsyncMock(return_value=[]),
+        )
+        for _ in range(2)
     ]
     create_session = Mock(side_effect=[distributor, *search_sessions])
 
@@ -79,21 +89,23 @@ def test_search_tech_debt_distributes_paths_before_creating_search_sessions():
 
 
 def test_search_tech_debt_awaits_all_prompts_in_order_for_each_search_scope(subtests):
-    distribution = PathDistribution(
-        scopes=[[Path("src/orders")], [Path("src/billing")], [Path("src/reports")]]
-    )
+    distribution = [[Path("src/orders")], [Path("src/billing")], [Path("src/reports")]]
     distributor = Mock(
         spec_set=AgentSession, next_turn=AsyncMock(return_value=distribution)
     )
     search_sessions = [
-        Mock(spec_set=AgentSession, next_turn=AsyncMock()) for _ in distribution.scopes
+        Mock(
+            spec_set=AgentSession,
+            next_turn=AsyncMock(return_value=[]),
+        )
+        for _ in distribution
     ]
     create_session = Mock(side_effect=[distributor, *search_sessions])
 
     asyncio.run(search_tech_debt(create_session, [Path("src")], len(search_sessions)))
 
     for index, (session, scope) in enumerate(
-        zip(search_sessions, distribution.scopes, strict=True)
+        zip(search_sessions, distribution, strict=True)
     ):
         with subtests.test(session=index):
             assert session.next_turn.await_count == len(TECH_DEBT_SEARCH_PROMPTS)
@@ -112,7 +124,10 @@ def test_search_tech_debt_rejects_nonpositive_parallelism(subtests):
     for name, parallelism in cases.items():
         with subtests.test(msg=name, parallelism=parallelism):
             create_session = Mock(
-                side_effect=lambda: Mock(spec_set=AgentSession, next_turn=AsyncMock())
+                side_effect=lambda: Mock(
+                    spec_set=AgentSession,
+                    next_turn=AsyncMock(return_value=[]),
+                )
             )
 
             with pytest.raises(ValueError, match="parallelism"):
@@ -121,3 +136,81 @@ def test_search_tech_debt_rejects_nonpositive_parallelism(subtests):
                 )
 
             create_session.assert_not_called()
+
+
+def _defect(description):
+    return Defect.model_validate(
+        {
+            "description": description,
+            "location": "src/orders.py",
+            "type": "Duplicated Code (Fowler, Refactoring, 2nd ed.)",
+            "characteristic": "Maintainability",
+            "subcharacteristic": "Modifiability",
+            "risks": {
+                "most_likely": {
+                    "event": "A maintainer changes duplicated code",
+                    "consequence": "Changes require repeated edits and reviews",
+                    "likelihood": "High",
+                    "severity": "Minor",
+                }
+            },
+        }
+    )
+
+
+def test_search_tech_debt_returns_only_rechecked_findings():
+    removed = _defect("False positive")
+    confirmed = _defect("Confirmed defect")
+    session = Mock(
+        spec_set=AgentSession,
+        next_turn=AsyncMock(
+            side_effect=[
+                f"Potential defects: {removed.description}; {confirmed.description}",
+                [removed, confirmed],
+                [confirmed],
+            ]
+        ),
+    )
+
+    result = asyncio.run(
+        search_tech_debt(lambda: session, [Path("src"), Path("tests")], parallelism=1)
+    )
+
+    assert result == [confirmed]
+    calls = session.next_turn.await_args_list
+    assert len(calls) == 3
+    assert calls[0].args == (TECH_DEBT_SEARCH_PROMPTS[0].format(paths="src, tests"),)
+    assert isinstance(calls[-1].args[1], TypeAdapter)
+    assert calls[-1].args[1].json_schema() == TypeAdapter(list[Defect]).json_schema()
+
+
+def test_search_tech_debt_collects_findings_from_all_search_scopes():
+    defects = [_defect("Orders defect"), _defect("Billing defect")]
+    distribution = [[Path("src/orders")], [Path("src/billing")]]
+    distributor = Mock(
+        spec_set=AgentSession, next_turn=AsyncMock(return_value=distribution)
+    )
+    sessions = [
+        Mock(
+            spec_set=AgentSession,
+            next_turn=AsyncMock(
+                side_effect=[
+                    "Initial findings",
+                    [defect],
+                    [defect],
+                ]
+            ),
+        )
+        for defect in defects
+    ]
+
+    result = asyncio.run(
+        search_tech_debt(
+            Mock(side_effect=[distributor, *sessions]), [Path("src")], parallelism=2
+        )
+    )
+
+    assert result == defects
+    schema = distributor.next_turn.await_args.args[1]
+    assert isinstance(schema, TypeAdapter)
+    assert schema.json_schema() == TypeAdapter(PathDistribution).json_schema()
