@@ -10,6 +10,9 @@ RECHECK_FINDINGS_PROMPT = (
     "Recheck all findings and remove false positives "
     "and any findings you are uncertain about"
 )
+DEDUPLICATE_FINDINGS_PROMPT = (
+    "Find and remove duplicate defects from these findings: {findings}"
+)
 
 TECH_DEBT_SEARCH_PROMPTS: Final[tuple[str, ...]] = (
     SEARCH_TECH_DEBT_PROMPT,

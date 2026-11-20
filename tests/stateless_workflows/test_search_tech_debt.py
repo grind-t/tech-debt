@@ -8,6 +8,7 @@ from pydantic import TypeAdapter
 from tech_debt._entities.defect import Defect
 from tech_debt._entities.path_distribution import PathDistribution
 from tech_debt._entities.tech_debt_search_prompts import (
+    DEDUPLICATE_FINDINGS_PROMPT,
     DISTRIBUTE_PATHS_PROMPT,
     TECH_DEBT_SEARCH_PROMPTS,
 )
@@ -17,7 +18,9 @@ from tech_debt._stateless_workflows.search_tech_debt import (
 )
 
 
-def test_search_tech_debt_creates_search_sessions_and_one_distributor(subtests):
+def test_search_tech_debt_creates_search_sessions_distributor_and_deduplicator(
+    subtests,
+):
     cases = {
         "multiple_search_sessions_boundary": 2,
         "multiple_search_sessions": 5,
@@ -36,11 +39,16 @@ def test_search_tech_debt_creates_search_sessions_and_one_distributor(subtests):
                 )
                 for _ in range(parallelism)
             ]
-            create_session = Mock(side_effect=[distributor, *search_sessions])
+            deduplicator = Mock(
+                spec_set=AgentSession, next_turn=AsyncMock(return_value=[])
+            )
+            create_session = Mock(
+                side_effect=[distributor, *search_sessions, deduplicator]
+            )
 
             asyncio.run(search_tech_debt(create_session, [Path("src")], parallelism))
 
-            assert create_session.call_count == parallelism + 1
+            assert create_session.call_count == parallelism + 2
 
 
 def test_search_tech_debt_skips_distribution_for_single_search_session():
@@ -78,7 +86,8 @@ def test_search_tech_debt_distributes_paths_before_creating_search_sessions():
         )
         for _ in range(2)
     ]
-    create_session = Mock(side_effect=[distributor, *search_sessions])
+    deduplicator = Mock(spec_set=AgentSession, next_turn=AsyncMock(return_value=[]))
+    create_session = Mock(side_effect=[distributor, *search_sessions, deduplicator])
 
     asyncio.run(search_tech_debt(create_session, [Path("src")], parallelism=2))
 
@@ -100,7 +109,8 @@ def test_search_tech_debt_awaits_all_prompts_in_order_for_each_search_scope(subt
         )
         for _ in distribution
     ]
-    create_session = Mock(side_effect=[distributor, *search_sessions])
+    deduplicator = Mock(spec_set=AgentSession, next_turn=AsyncMock(return_value=[]))
+    create_session = Mock(side_effect=[distributor, *search_sessions, deduplicator])
 
     asyncio.run(search_tech_debt(create_session, [Path("src")], len(search_sessions)))
 
@@ -204,9 +214,14 @@ def test_search_tech_debt_collects_findings_from_all_search_scopes():
         for defect in defects
     ]
 
+    deduplicator = Mock(
+        spec_set=AgentSession, next_turn=AsyncMock(return_value=defects)
+    )
     result = asyncio.run(
         search_tech_debt(
-            Mock(side_effect=[distributor, *sessions]), [Path("src")], parallelism=2
+            Mock(side_effect=[distributor, *sessions, deduplicator]),
+            [Path("src")],
+            parallelism=2,
         )
     )
 
@@ -214,3 +229,49 @@ def test_search_tech_debt_collects_findings_from_all_search_scopes():
     schema = distributor.next_turn.await_args.args[1]
     assert isinstance(schema, TypeAdapter)
     assert schema.json_schema() == TypeAdapter(PathDistribution).json_schema()
+
+
+def test_search_tech_debt_deduplicates_findings_in_one_final_session():
+    duplicate = _defect("Duplicated finding")
+    unique = _defect("Unique finding")
+    findings = [[duplicate], [duplicate, unique]]
+    distributor = Mock(
+        spec_set=AgentSession,
+        next_turn=AsyncMock(return_value=[[Path("src/a")], [Path("src/b")]]),
+    )
+    search_sessions = [
+        Mock(
+            spec_set=AgentSession,
+            next_turn=AsyncMock(side_effect=["Initial findings", result, result]),
+        )
+        for result in findings
+    ]
+    deduplicator = Mock(
+        spec_set=AgentSession,
+        next_turn=AsyncMock(return_value=[duplicate, unique]),
+    )
+    sessions = [distributor, *search_sessions, deduplicator]
+
+    def create():
+        index = create_session.call_count - 1
+        if index == len(sessions) - 1:
+            assert all(
+                session.next_turn.await_count == len(TECH_DEBT_SEARCH_PROMPTS)
+                for session in search_sessions
+            )
+        return sessions[index]
+
+    create_session = Mock(side_effect=create)
+
+    result = asyncio.run(search_tech_debt(create_session, [Path("src")], parallelism=2))
+
+    assert create_session.call_count == 4
+    deduplicator.next_turn.assert_awaited_once()
+    call = deduplicator.next_turn.await_args
+    adapter = TypeAdapter(list[Defect])
+    assert call.args[0] == DEDUPLICATE_FINDINGS_PROMPT.format(
+        findings=adapter.dump_json([duplicate, duplicate, unique]).decode("utf-8")
+    )
+    assert isinstance(call.args[1], TypeAdapter)
+    assert call.args[1].json_schema() == adapter.json_schema()
+    assert result == [duplicate, unique]
