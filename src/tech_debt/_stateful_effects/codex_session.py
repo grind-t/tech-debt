@@ -9,6 +9,9 @@ from typing import overload
 from pydantic import TypeAdapter
 
 from tech_debt._entities.agent_settings import AgentSettings
+from tech_debt._stateless_computations.normalize_codex_schema import (
+    normalize_codex_schema,
+)
 from tech_debt._stateless_workflows.search_tech_debt import AgentSession
 
 
@@ -64,7 +67,7 @@ class CodexSession(AgentSession):
                     schema_path = Path(directory) / "schema.json"
                     await asyncio.to_thread(
                         schema_path.write_text,
-                        json.dumps(output_schema),
+                        json.dumps(normalize_codex_schema(output_schema)),
                         encoding="utf-8",
                     )
                     command.extend(["--output-schema", str(schema_path)])
