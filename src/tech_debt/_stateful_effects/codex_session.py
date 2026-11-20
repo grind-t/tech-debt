@@ -8,13 +8,15 @@ from typing import overload
 
 from pydantic import TypeAdapter
 
+from tech_debt._entities.agent_settings import AgentSettings
 from tech_debt._stateless_workflows.search_tech_debt import AgentSession
 
 
 class CodexSession(AgentSession):
     """Run consecutive prompts in one Codex session."""
 
-    def __init__(self) -> None:
+    def __init__(self, settings: AgentSettings) -> None:
+        self._settings = settings
         self._session_id: str | None = None
         self._lock = asyncio.Lock()
 
@@ -36,6 +38,15 @@ class CodexSession(AgentSession):
                 command = ["codex", "exec", "--sandbox", "read-only"]
                 if self._session_id is not None:
                     command.append("resume")
+                command.extend(
+                    [
+                        "--model",
+                        self._settings.model,
+                        "--config",
+                        "model_reasoning_effort="
+                        + json.dumps(self._settings.reasoning_effort),
+                    ]
+                )
                 command.append("--json")
                 wrapped = False
                 if schema is not None:
