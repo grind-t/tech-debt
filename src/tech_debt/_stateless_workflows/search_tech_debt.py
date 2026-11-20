@@ -4,6 +4,8 @@ from typing import Protocol, overload
 
 from pydantic import BaseModel
 
+from tech_debt._entities.defect import Defect
+
 
 class AgentSession(Protocol):
     @overload
@@ -17,8 +19,9 @@ class AgentSession(Protocol):
 
 async def search_tech_debt(
     create_session: Callable[[], AgentSession], paths: Sequence[Path], parallelism: int
-) -> None:
+) -> list[Defect]:
     """Search technical debt using ``parallelism`` concurrent search sessions."""
+    return []
 
 
 async def _search_tech_debt_session(

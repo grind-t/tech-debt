@@ -3,8 +3,8 @@ from pathlib import Path
 from unittest.mock import AsyncMock, Mock
 
 import pytest
-from pydantic import BaseModel
 
+from tech_debt._entities.path_distribution import PathDistribution
 from tech_debt._entities.tech_debt_search_prompts import (
     DISTRIBUTE_PATHS_PROMPT,
     TECH_DEBT_SEARCH_PROMPTS,
@@ -15,10 +15,6 @@ from tech_debt._stateless_workflows.search_tech_debt import (
 )
 
 
-class _PathDistribution(BaseModel):
-    scopes: list[list[Path]]
-
-
 def test_search_tech_debt_creates_search_sessions_and_one_distributor(subtests):
     cases = {
         "single_search_session": 1,
@@ -27,7 +23,7 @@ def test_search_tech_debt_creates_search_sessions_and_one_distributor(subtests):
     }
     for name, parallelism in cases.items():
         with subtests.test(msg=name, parallelism=parallelism):
-            distribution = _PathDistribution(
+            distribution = PathDistribution(
                 scopes=[[Path(f"src/part_{index}")] for index in range(parallelism)]
             )
             distributor = Mock(
@@ -46,7 +42,7 @@ def test_search_tech_debt_creates_search_sessions_and_one_distributor(subtests):
 
 
 def test_search_tech_debt_distributes_paths_before_creating_search_sessions():
-    distribution = _PathDistribution(scopes=[[Path("src/a")], [Path("src/b")]])
+    distribution = PathDistribution(scopes=[[Path("src/a")], [Path("src/b")]])
 
     async def distribute(*args, **kwargs):
         assert create_session.call_count == 1
@@ -69,7 +65,7 @@ def test_search_tech_debt_distributes_paths_before_creating_search_sessions():
 
 
 def test_search_tech_debt_awaits_all_prompts_in_order_for_each_search_scope(subtests):
-    distribution = _PathDistribution(
+    distribution = PathDistribution(
         scopes=[[Path("src/orders")], [Path("src/billing")], [Path("src/reports")]]
     )
     distributor = Mock(
