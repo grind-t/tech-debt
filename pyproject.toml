@@ -1,6 +1,6 @@
 [project]
 name = "grind-t-tech-debt"
-version = "0.1.0"
+version = "0.1.1"
 description = "Tool for managing technical debt."
 license = "ISC"
 authors = [
@@ -12,6 +12,7 @@ dependencies = [
 ]
 
 [project.scripts]
+grind-t-tech-debt = "tech_debt:main"
 tech-debt = "tech_debt:main"
 
 [project.urls]
