@@ -1,3 +1,5 @@
+from collections.abc import Sequence
+from pathlib import Path
 from typing import Protocol, overload
 
 from pydantic import BaseModel
@@ -15,5 +17,13 @@ class ExecutePrompt(Protocol):
     ) -> tuple[str, ExecutePrompt]: ...
 
 
-async def search_tech_debt(execute_prompt: ExecutePrompt, parallelism: int) -> None:
+async def search_tech_debt(
+    execute_prompt: ExecutePrompt, paths: Sequence[Path], parallelism: int
+) -> None:
     """Search technical debt using ``parallelism`` concurrent search sessions."""
+
+
+async def _search_tech_debt_session(
+    execute_prompt: ExecutePrompt, paths: Sequence[Path]
+) -> None:
+    pass
