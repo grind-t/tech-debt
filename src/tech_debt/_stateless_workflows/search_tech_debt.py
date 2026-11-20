@@ -8,6 +8,7 @@ from pydantic import TypeAdapter
 from tech_debt._entities.defect import Defect
 from tech_debt._entities.path_distribution import PathDistribution
 from tech_debt._entities.search_tech_debt_prompt import (
+    ABSOLUTE_PATHS_PROMPT,
     DEDUPLICATE_FINDINGS_PROMPT,
     DISTRIBUTE_PATHS_PROMPT,
     FORMAT_FINDINGS_PROMPT,
@@ -37,15 +38,7 @@ async def search_tech_debt(
     if parallelism == 1:
         return await _search_tech_debt_session(create_session(), paths)
 
-    distributor = create_session()
-    distribution = await distributor.next_turn(
-        DISTRIBUTE_PATHS_PROMPT.format(
-            paths=", ".join(map(str, paths)), parallelism=parallelism
-        ),
-        TypeAdapter(PathDistribution),
-    )
-    if len(distribution) != parallelism:
-        raise ValueError("Path distribution must contain exactly parallelism scopes")
+    distribution = await _distribute_paths(create_session(), paths, parallelism)
 
     async with asyncio.TaskGroup() as group:
         searches = [
@@ -61,6 +54,28 @@ async def search_tech_debt(
         ),
         schema,
     )
+
+
+async def _distribute_paths(
+    session: AgentSession, paths: Sequence[PurePath], parallelism: int
+) -> PathDistribution:
+    distribution_schema = TypeAdapter(PathDistribution)
+    distribution = await session.next_turn(
+        DISTRIBUTE_PATHS_PROMPT.format(
+            paths=", ".join(map(str, paths)), parallelism=parallelism
+        ),
+        distribution_schema,
+    )
+    if any(not path.is_absolute() for scope in distribution for path in scope):
+        distribution = await session.next_turn(
+            ABSOLUTE_PATHS_PROMPT, distribution_schema
+        )
+        if any(not path.is_absolute() for scope in distribution for path in scope):
+            raise ValueError("Path distribution must contain only absolute paths")
+    if len(distribution) != parallelism:
+        raise ValueError("Path distribution must contain exactly parallelism scopes")
+
+    return distribution
 
 
 async def _search_tech_debt_session(

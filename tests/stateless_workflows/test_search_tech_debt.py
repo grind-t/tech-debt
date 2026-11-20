@@ -8,6 +8,7 @@ from pydantic import TypeAdapter
 from tech_debt._entities.defect import Defect
 from tech_debt._entities.path_distribution import PathDistribution
 from tech_debt._entities.search_tech_debt_prompt import (
+    ABSOLUTE_PATHS_PROMPT,
     DEDUPLICATE_FINDINGS_PROMPT,
     DISTRIBUTE_PATHS_PROMPT,
     FORMAT_FINDINGS_PROMPT,
@@ -35,7 +36,9 @@ def test_search_tech_debt_creates_search_sessions_distributor_and_deduplicator(
     }
     for name, parallelism in cases.items():
         with subtests.test(msg=name, parallelism=parallelism):
-            distribution = [[Path(f"src/part_{index}")] for index in range(parallelism)]
+            distribution = [
+                [Path(f"src/part_{index}").resolve()] for index in range(parallelism)
+            ]
             distributor = Mock(
                 spec_set=AgentSession,
                 next_turn=AsyncMock(return_value=distribution),
@@ -76,7 +79,7 @@ def test_search_tech_debt_skips_distribution_for_single_search_session():
 
 
 def test_search_tech_debt_distributes_paths_before_creating_search_sessions():
-    distribution = [[Path("src/a")], [Path("src/b")]]
+    distribution = [[Path("src/a").resolve()], [Path("src/b").resolve()]]
 
     async def distribute(*args, **kwargs):
         assert create_session.call_count == 1
@@ -104,7 +107,11 @@ def test_search_tech_debt_distributes_paths_before_creating_search_sessions():
 
 
 def test_search_tech_debt_awaits_all_prompts_in_order_for_each_search_scope(subtests):
-    distribution = [[Path("src/orders")], [Path("src/billing")], [Path("src/reports")]]
+    distribution = [
+        [Path("src/orders").resolve()],
+        [Path("src/billing").resolve()],
+        [Path("src/reports").resolve()],
+    ]
     distributor = Mock(
         spec_set=AgentSession, next_turn=AsyncMock(return_value=distribution)
     )
@@ -201,7 +208,7 @@ def test_search_tech_debt_returns_only_rechecked_findings():
 
 def test_search_tech_debt_collects_findings_from_all_search_scopes():
     defects = [_defect("Orders defect"), _defect("Billing defect")]
-    distribution = [[Path("src/orders")], [Path("src/billing")]]
+    distribution = [[Path("src/orders").resolve()], [Path("src/billing").resolve()]]
     distributor = Mock(
         spec_set=AgentSession, next_turn=AsyncMock(return_value=distribution)
     )
@@ -242,7 +249,9 @@ def test_search_tech_debt_deduplicates_findings_in_one_final_session():
     findings = [[duplicate], [duplicate, unique]]
     distributor = Mock(
         spec_set=AgentSession,
-        next_turn=AsyncMock(return_value=[[Path("src/a")], [Path("src/b")]]),
+        next_turn=AsyncMock(
+            return_value=[[Path("src/a").resolve()], [Path("src/b").resolve()]]
+        ),
     )
     search_sessions = [
         Mock(
@@ -280,3 +289,57 @@ def test_search_tech_debt_deduplicates_findings_in_one_final_session():
     assert isinstance(call.args[1], TypeAdapter)
     assert call.args[1].json_schema() == adapter.json_schema()
     assert result == [duplicate, unique]
+
+
+def test_search_tech_debt_corrects_relative_paths_in_the_same_session(subtests):
+    corrected = [[Path("src/a").resolve()], [Path("src/b").resolve()]]
+    cases = {
+        "all_relative": [[Path("src/a")], [Path("src/b")]],
+        "mixed": [[Path("src/a")], [Path("src/b").resolve()]],
+    }
+    for name, initial in cases.items():
+        with subtests.test(msg=name):
+            distributor = Mock(
+                spec_set=AgentSession,
+                next_turn=AsyncMock(side_effect=[initial, corrected]),
+            )
+            sessions = [
+                Mock(spec_set=AgentSession, next_turn=AsyncMock(return_value=[]))
+                for _ in range(2)
+            ]
+            deduplicator = Mock(
+                spec_set=AgentSession, next_turn=AsyncMock(return_value=[])
+            )
+            create_session = Mock(side_effect=[distributor, *sessions, deduplicator])
+
+            result = asyncio.run(
+                search_tech_debt(create_session, [Path("src").resolve()], parallelism=2)
+            )
+
+            assert result == []
+            assert create_session.call_count == 4
+            assert distributor.next_turn.await_count == 2
+            initial_call, correction_call = distributor.next_turn.await_args_list
+            assert correction_call.args[0] == ABSOLUTE_PATHS_PROMPT
+            assert correction_call.args[1] is initial_call.args[1]
+            for session, scope in zip(sessions, corrected, strict=True):
+                assert session.next_turn.await_args_list[0].args[0] == (
+                    SEARCH_TECH_DEBT_PROMPT.format(paths=str(scope[0]))
+                )
+
+
+def test_search_tech_debt_rejects_relative_paths_after_one_correction():
+    distribution = [[Path("src/a")], [Path("src/b").resolve()]]
+    distributor = Mock(
+        spec_set=AgentSession,
+        next_turn=AsyncMock(side_effect=[distribution, distribution]),
+    )
+    create_session = Mock(side_effect=[distributor])
+
+    with pytest.raises(ValueError, match="only absolute paths"):
+        asyncio.run(
+            search_tech_debt(create_session, [Path("src").resolve()], parallelism=2)
+        )
+
+    create_session.assert_called_once_with()
+    assert distributor.next_turn.await_count == 2

@@ -64,7 +64,11 @@ def _search(
 
     try:
         defects = asyncio.run(
-            search_tech_debt(partial(CodexSession, settings), paths, parallelism)
+            search_tech_debt(
+                partial(CodexSession, settings),
+                [path.resolve() for path in paths],
+                parallelism,
+            )
         )
     except KeyboardInterrupt:
         parser.exit(status=130, message="\nSearch cancelled.\n")
