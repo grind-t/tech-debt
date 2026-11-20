@@ -17,7 +17,6 @@ from tech_debt._stateless_workflows.search_tech_debt import (
 
 def test_search_tech_debt_creates_search_sessions_and_one_distributor(subtests):
     cases = {
-        "single_search_session": 1,
         "multiple_search_sessions_boundary": 2,
         "multiple_search_sessions": 5,
     }
@@ -39,6 +38,21 @@ def test_search_tech_debt_creates_search_sessions_and_one_distributor(subtests):
             asyncio.run(search_tech_debt(create_session, [Path("src")], parallelism))
 
             assert create_session.call_count == parallelism + 1
+
+
+def test_search_tech_debt_skips_distribution_for_single_search_session():
+    session = Mock(spec_set=AgentSession, next_turn=AsyncMock())
+    create_session = Mock(side_effect=[session])
+
+    asyncio.run(search_tech_debt(create_session, [Path("src")], parallelism=1))
+
+    create_session.assert_called_once_with()
+    assert session.next_turn.await_count == len(TECH_DEBT_SEARCH_PROMPTS)
+    actual_prompts = [call.args[0] for call in session.next_turn.await_args_list]
+    expected_prompts = [
+        prompt.format(paths="src") for prompt in TECH_DEBT_SEARCH_PROMPTS
+    ]
+    assert actual_prompts == expected_prompts
 
 
 def test_search_tech_debt_distributes_paths_before_creating_search_sessions():
