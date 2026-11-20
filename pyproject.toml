@@ -1,0 +1,83 @@
+[project]
+name = "grind-t-lib"
+version = "0.1.0"
+description = "Add your description here"
+license = "ISC"
+authors = [
+    { name = "grind-t", email = "grindt.gd@gmail.com" }
+]
+requires-python = ">=3.14"
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/grind-t/lib-py"
+Issues = "https://github.com/grind-t/lib-py/issues"
+
+[build-system]
+requires = ["uv_build>=0.12.9,<0.13.0"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "lib"
+
+[tool.ruff.lint]
+select = [
+    "E", "F", "I", "UP", "B", "SIM", "RUF", "PT", "N",
+    "C4", "PIE", "PERF", "FURB", "PTH", "T20", "ANN", "ASYNC", "DTZ", "TID",
+]
+ignore = ["RUF001"]  # allow Cyrillic in strings
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "all"
+
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"pytest.mark.parametrize".msg = "Use the `subtests` fixture with named cases instead."
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["ANN"]
+"benchmarks/**" = ["ANN", "TID251"]  # benchmarks need parametrize: subtests are not timed separately
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = ["--import-mode=importlib", "--strict-markers", "--strict-config", "-ra", "-q"]
+xfail_strict = true
+filterwarnings = ["error"]
+
+[tool.poe.tasks]
+fmt = "ruff format"
+lint = [
+    { cmd = "ruff check" },
+    { cmd = "lint-imports --no-logo" },
+    { cmd = "lint-rules src" },
+    { cmd = "vulture src" },
+]
+typecheck = "ty check"
+test = "pytest"
+build = "uv build"
+check = ["lint", "typecheck", "test"]
+
+[dependency-groups]
+dev = [
+    "grind-t-lint-rules>=0.4.0",
+    "import-linter",
+    "poethepoet",
+    "pytest",
+    "ruff",
+    "ty",
+    "vulture",
+]
+
+# ---------- Architecture rules enforced by lint-imports ----------
+[tool.importlinter]
+root_package = "lib"
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "Effects -> workflows -> computations -> entities"
+type = "layers"
+layers = [
+    "lib._stateless_effects : lib._stateful_effects",
+    "lib._stateless_workflows : lib._stateful_workflows",
+    "lib._stateless_computations : lib._stateful_computations",
+    "lib._entities",
+]
