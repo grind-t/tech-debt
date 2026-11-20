@@ -185,7 +185,8 @@ def _defect(description):
                     "consequence": "Changes require repeated edits and reviews",
                     "likelihood": "High",
                     "severity": "Minor",
-                }
+                },
+                "worst_credible": None,
             },
         }
     )

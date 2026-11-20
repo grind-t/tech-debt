@@ -1,10 +1,10 @@
 from pathlib import PurePath
 from typing import Annotated
 
-from pydantic import Field
+from pydantic import Field, WithJsonSchema
 
 type PathDistribution = Annotated[
-    list[list[PurePath]],
+    list[list[Annotated[PurePath, WithJsonSchema({"type": "string"})]]],
     Field(
         description=(
             "Balanced, non-overlapping search scopes covering the specified paths."

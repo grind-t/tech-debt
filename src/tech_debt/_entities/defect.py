@@ -1,25 +1,25 @@
 from typing import Literal, Self, get_args
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
-type _FunctionalSuitability = Literal[
+_FunctionalSuitability = Literal[
     "Functional completeness",
     "Functional correctness",
     "Functional appropriateness",
 ]
 
-type _PerformanceEfficiency = Literal[
+_PerformanceEfficiency = Literal[
     "Time behaviour",
     "Resource utilization",
     "Capacity",
 ]
 
-type _Compatibility = Literal[
+_Compatibility = Literal[
     "Co-existence",
     "Interoperability",
 ]
 
-type _InteractionCapability = Literal[
+_InteractionCapability = Literal[
     "Appropriateness recognizability",
     "Learnability",
     "Operability",
@@ -30,14 +30,14 @@ type _InteractionCapability = Literal[
     "Self-descriptiveness",
 ]
 
-type _Reliability = Literal[
+_Reliability = Literal[
     "Faultlessness",
     "Availability",
     "Fault tolerance",
     "Recoverability",
 ]
 
-type _Security = Literal[
+_Security = Literal[
     "Confidentiality",
     "Integrity",
     "Non-repudiation",
@@ -46,7 +46,7 @@ type _Security = Literal[
     "Resistance",
 ]
 
-type _Maintainability = Literal[
+_Maintainability = Literal[
     "Modularity",
     "Reusability",
     "Analysability",
@@ -54,14 +54,14 @@ type _Maintainability = Literal[
     "Testability",
 ]
 
-type _Flexibility = Literal[
+_Flexibility = Literal[
     "Adaptability",
     "Scalability",
     "Installability",
     "Replaceability",
 ]
 
-type _Safety = Literal[
+_Safety = Literal[
     "Operational constraint",
     "Risk identification",
     "Fail safe",
@@ -69,7 +69,7 @@ type _Safety = Literal[
     "Safe integration",
 ]
 
-type _Characteristic = Literal[
+_Characteristic = Literal[
     "Functional suitability",
     "Performance efficiency",
     "Compatibility",
@@ -81,7 +81,7 @@ type _Characteristic = Literal[
     "Safety",
 ]
 
-type _Subcharacteristic = (
+_Subcharacteristic = (
     _FunctionalSuitability
     | _PerformanceEfficiency
     | _Compatibility
@@ -94,18 +94,18 @@ type _Subcharacteristic = (
 )
 
 _SUBCHARACTERISTICS = {
-    "Functional suitability": get_args(_FunctionalSuitability.__value__),
-    "Performance efficiency": get_args(_PerformanceEfficiency.__value__),
-    "Compatibility": get_args(_Compatibility.__value__),
-    "Interaction capability": get_args(_InteractionCapability.__value__),
-    "Reliability": get_args(_Reliability.__value__),
-    "Security": get_args(_Security.__value__),
-    "Maintainability": get_args(_Maintainability.__value__),
-    "Flexibility": get_args(_Flexibility.__value__),
-    "Safety": get_args(_Safety.__value__),
+    "Functional suitability": get_args(_FunctionalSuitability),
+    "Performance efficiency": get_args(_PerformanceEfficiency),
+    "Compatibility": get_args(_Compatibility),
+    "Interaction capability": get_args(_InteractionCapability),
+    "Reliability": get_args(_Reliability),
+    "Security": get_args(_Security),
+    "Maintainability": get_args(_Maintainability),
+    "Flexibility": get_args(_Flexibility),
+    "Safety": get_args(_Safety),
 }
 
-_MOST_LIKELY_RISK_EXAMPLE = {
+_MOST_LIKELY_RISK_EXAMPLE: dict[str, JsonValue] = {
     "event": "A maintainer changes how totals are computed",
     "consequence": (
         "Each change takes three edits and three reviews, "
@@ -114,7 +114,7 @@ _MOST_LIKELY_RISK_EXAMPLE = {
     "likelihood": "High",
     "severity": "Minor",
 }
-_WORST_CREDIBLE_RISK_EXAMPLE = {
+_WORST_CREDIBLE_RISK_EXAMPLE: dict[str, JsonValue] = {
     "event": (
         "A maintainer changes totals and misses one of the three copies, "
         "and no test compares totals across them"
@@ -129,6 +129,8 @@ _WORST_CREDIBLE_RISK_EXAMPLE = {
 
 
 class _Risk(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     event: str = Field(
         description=(
             "A real event that could occur and would not be detected by "
@@ -146,16 +148,29 @@ class _Risk(BaseModel):
 
 
 class _DefectRisks(BaseModel):
-    most_likely: _Risk = Field(
-        description="Most likely consequence of the defect.",
+    """Most likely risk and worst credible risk; use null when they coincide."""
+
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={
+            "examples": [
+                {
+                    "most_likely": _MOST_LIKELY_RISK_EXAMPLE,
+                    "worst_credible": _WORST_CREDIBLE_RISK_EXAMPLE,
+                }
+            ]
+        },
     )
+
+    most_likely: _Risk
     worst_credible: _Risk | None = Field(
-        default=None,
         description="Worst credible consequence, if different from the most likely.",
     )
 
 
 class Defect(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     description: str = Field(
         description="Brief description of the problem.",
         examples=["Order totals are computed in three places"],
@@ -180,14 +195,7 @@ class Defect(BaseModel):
         description="Degraded subcharacteristic of the chosen quality characteristic.",
         examples=["Modifiability"],
     )
-    risks: _DefectRisks = Field(
-        examples=[
-            {
-                "most_likely": _MOST_LIKELY_RISK_EXAMPLE,
-                "worst_credible": _WORST_CREDIBLE_RISK_EXAMPLE,
-            }
-        ]
-    )
+    risks: _DefectRisks
 
     @model_validator(mode="after")
     def _validate_subcharacteristic(self) -> Self:
