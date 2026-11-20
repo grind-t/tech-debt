@@ -1,7 +1,7 @@
 [project]
-name = "grind-t-lib"
+name = "grind-t-tech-debt"
 version = "0.1.0"
-description = "Add your description here"
+description = "Tools for managing technical debt."
 license = "ISC"
 authors = [
     { name = "grind-t", email = "grindt.gd@gmail.com" }
@@ -10,15 +10,15 @@ requires-python = ">=3.14"
 dependencies = []
 
 [project.urls]
-Homepage = "https://github.com/grind-t/lib-py"
-Issues = "https://github.com/grind-t/lib-py/issues"
+Homepage = "https://github.com/grind-t/tech-debt"
+Issues = "https://github.com/grind-t/tech-debt/issues"
 
 [build-system]
 requires = ["uv_build>=0.12.9,<0.13.0"]
 build-backend = "uv_build"
 
 [tool.uv.build-backend]
-module-name = "lib"
+module-name = "tech_debt"
 
 [tool.ruff.lint]
 select = [
@@ -69,15 +69,15 @@ dev = [
 
 # ---------- Architecture rules enforced by lint-imports ----------
 [tool.importlinter]
-root_package = "lib"
+root_package = "tech_debt"
 include_external_packages = true
 
 [[tool.importlinter.contracts]]
 name = "Effects -> workflows -> computations -> entities"
 type = "layers"
 layers = [
-    "lib._stateless_effects : lib._stateful_effects",
-    "lib._stateless_workflows : lib._stateful_workflows",
-    "lib._stateless_computations : lib._stateful_computations",
-    "lib._entities",
+    "tech_debt._stateless_effects : tech_debt._stateful_effects",
+    "tech_debt._stateless_workflows : tech_debt._stateful_workflows",
+    "tech_debt._stateless_computations : tech_debt._stateful_computations",
+    "tech_debt._entities",
 ]
