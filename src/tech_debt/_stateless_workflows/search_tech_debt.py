@@ -1,5 +1,5 @@
 import asyncio
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Collection, Sequence
 from pathlib import PurePath
 from typing import Protocol, overload
 
@@ -8,12 +8,15 @@ from pydantic import TypeAdapter
 from tech_debt._entities.defect import Defect
 from tech_debt._entities.path_distribution import PathDistribution
 from tech_debt._entities.search_tech_debt_prompt import (
-    ABSOLUTE_PATHS_PROMPT,
+    CORRECT_PATH_DISTRIBUTION_PROMPT,
     DEDUPLICATE_FINDINGS_PROMPT,
     DISTRIBUTE_PATHS_PROMPT,
     FORMAT_FINDINGS_PROMPT,
     RECHECK_FINDINGS_PROMPT,
     SEARCH_TECH_DEBT_PROMPT,
+)
+from tech_debt._stateless_computations.validate_path_distribution import (
+    validate_path_distribution,
 )
 
 
@@ -31,14 +34,23 @@ async def search_tech_debt(
     create_session: Callable[[], AgentSession],
     paths: Sequence[PurePath],
     parallelism: int,
+    *,
+    normalize_paths: Callable[[Sequence[PurePath]], list[PurePath]],
+    list_files: Callable[[Sequence[PurePath]], Collection[PurePath]],
 ) -> list[Defect]:
     """Search technical debt using ``parallelism`` concurrent search sessions."""
     if parallelism < 1:
         raise ValueError("parallelism must be greater than zero")
+    if not paths:
+        raise ValueError("Search paths must not be empty")
+    paths = await asyncio.to_thread(normalize_paths, paths)
     if parallelism == 1:
         return await _search_tech_debt_session(create_session(), paths)
 
-    distribution = await _distribute_paths(create_session(), paths, parallelism)
+    files = await asyncio.to_thread(list_files, paths)
+    distribution = await _distribute_paths(
+        create_session(), paths, parallelism, normalize_paths, files
+    )
 
     async with asyncio.TaskGroup() as group:
         searches = [
@@ -57,25 +69,38 @@ async def search_tech_debt(
 
 
 async def _distribute_paths(
-    session: AgentSession, paths: Sequence[PurePath], parallelism: int
+    session: AgentSession,
+    paths: Sequence[PurePath],
+    parallelism: int,
+    normalize_paths: Callable[[Sequence[PurePath]], list[PurePath]],
+    files: Collection[PurePath],
 ) -> PathDistribution:
     distribution_schema = TypeAdapter(PathDistribution)
-    distribution = await session.next_turn(
-        DISTRIBUTE_PATHS_PROMPT.format(
-            paths=", ".join(map(str, paths)), parallelism=parallelism
-        ),
-        distribution_schema,
+    prompt = DISTRIBUTE_PATHS_PROMPT.format(
+        paths=", ".join(map(str, paths)), parallelism=parallelism
     )
-    if any(not path.is_absolute() for scope in distribution for path in scope):
-        distribution = await session.next_turn(
-            ABSOLUTE_PATHS_PROMPT, distribution_schema
-        )
-        if any(not path.is_absolute() for scope in distribution for path in scope):
-            raise ValueError("Path distribution must contain only absolute paths")
-    if len(distribution) != parallelism:
-        raise ValueError("Path distribution must contain exactly parallelism scopes")
-
-    return distribution
+    corrected = False
+    while True:
+        try:
+            distribution = await session.next_turn(prompt, distribution_schema)
+            if any(not path.is_absolute() for scope in distribution for path in scope):
+                raise ValueError("Path distribution must contain only absolute paths")
+            try:
+                normalized = [
+                    await asyncio.to_thread(normalize_paths, scope)
+                    for scope in distribution
+                ]
+            except OSError as error:
+                raise ValueError(
+                    f"Cannot resolve distributed search paths: {error}"
+                ) from error
+            validate_path_distribution(paths, normalized, parallelism, files)
+            return normalized
+        except ValueError as error:
+            if corrected:
+                raise
+            corrected = True
+            prompt = CORRECT_PATH_DISTRIBUTION_PROMPT.format(errors=str(error))
 
 
 async def _search_tech_debt_session(

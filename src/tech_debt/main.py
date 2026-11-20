@@ -14,6 +14,8 @@ from tech_debt._entities.defect import Defect
 from tech_debt._stateful_effects.codex_session import CodexSession
 from tech_debt._stateless_computations.format_search_error import format_search_error
 from tech_debt._stateless_effects.list_codex_models import list_codex_models
+from tech_debt._stateless_effects.list_search_files import list_search_files
+from tech_debt._stateless_effects.normalize_search_paths import normalize_search_paths
 from tech_debt._stateless_effects.read_agent_settings import read_agent_settings
 from tech_debt._stateless_workflows.search_tech_debt import search_tech_debt
 
@@ -68,6 +70,8 @@ def _search(
                 partial(CodexSession, settings),
                 [path.resolve() for path in paths],
                 parallelism,
+                normalize_paths=normalize_search_paths,
+                list_files=list_search_files,
             )
         )
     except KeyboardInterrupt:

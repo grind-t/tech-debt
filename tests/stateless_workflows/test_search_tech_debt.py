@@ -8,7 +8,7 @@ from pydantic import TypeAdapter
 from tech_debt._entities.defect import Defect
 from tech_debt._entities.path_distribution import PathDistribution
 from tech_debt._entities.search_tech_debt_prompt import (
-    ABSOLUTE_PATHS_PROMPT,
+    CORRECT_PATH_DISTRIBUTION_PROMPT,
     DEDUPLICATE_FINDINGS_PROMPT,
     DISTRIBUTE_PATHS_PROMPT,
     FORMAT_FINDINGS_PROMPT,
@@ -25,6 +25,17 @@ _SEARCH_PROMPTS = (
     FORMAT_FINDINGS_PROMPT,
     RECHECK_FINDINGS_PROMPT,
 )
+
+
+async def _run_search(create_session, paths, parallelism):
+    # These tests exercise session orchestration with a stubbed filesystem snapshot.
+    return await search_tech_debt(
+        create_session,
+        paths,
+        parallelism,
+        normalize_paths=lambda values: [Path(path).resolve() for path in values],
+        list_files=lambda values: frozenset(),
+    )
 
 
 def test_search_tech_debt_creates_search_sessions_distributor_and_deduplicator(
@@ -57,7 +68,7 @@ def test_search_tech_debt_creates_search_sessions_distributor_and_deduplicator(
                 side_effect=[distributor, *search_sessions, deduplicator]
             )
 
-            asyncio.run(search_tech_debt(create_session, [Path("src")], parallelism))
+            asyncio.run(_run_search(create_session, [Path("src")], parallelism))
 
             assert create_session.call_count == parallelism + 2
 
@@ -69,12 +80,14 @@ def test_search_tech_debt_skips_distribution_for_single_search_session():
     )
     create_session = Mock(side_effect=[session])
 
-    asyncio.run(search_tech_debt(create_session, [Path("src")], parallelism=1))
+    asyncio.run(_run_search(create_session, [Path("src")], parallelism=1))
 
     create_session.assert_called_once_with()
     assert session.next_turn.await_count == len(_SEARCH_PROMPTS)
     actual_prompts = [call.args[0] for call in session.next_turn.await_args_list]
-    expected_prompts = [prompt.format(paths="src") for prompt in _SEARCH_PROMPTS]
+    expected_prompts = [
+        prompt.format(paths=str(Path("src").resolve())) for prompt in _SEARCH_PROMPTS
+    ]
     assert actual_prompts == expected_prompts
 
 
@@ -98,11 +111,11 @@ def test_search_tech_debt_distributes_paths_before_creating_search_sessions():
     deduplicator = Mock(spec_set=AgentSession, next_turn=AsyncMock(return_value=[]))
     create_session = Mock(side_effect=[distributor, *search_sessions, deduplicator])
 
-    asyncio.run(search_tech_debt(create_session, [Path("src")], parallelism=2))
+    asyncio.run(_run_search(create_session, [Path("src")], parallelism=2))
 
     distributor.next_turn.assert_awaited_once()
     assert distributor.next_turn.await_args.args[0] == DISTRIBUTE_PATHS_PROMPT.format(
-        paths="src", parallelism=2
+        paths=str(Path("src").resolve()), parallelism=2
     )
 
 
@@ -125,7 +138,7 @@ def test_search_tech_debt_awaits_all_prompts_in_order_for_each_search_scope(subt
     deduplicator = Mock(spec_set=AgentSession, next_turn=AsyncMock(return_value=[]))
     create_session = Mock(side_effect=[distributor, *search_sessions, deduplicator])
 
-    asyncio.run(search_tech_debt(create_session, [Path("src")], len(search_sessions)))
+    asyncio.run(_run_search(create_session, [Path("src")], len(search_sessions)))
 
     for index, (session, scope) in enumerate(
         zip(search_sessions, distribution, strict=True)
@@ -153,9 +166,7 @@ def test_search_tech_debt_rejects_nonpositive_parallelism(subtests):
             )
 
             with pytest.raises(ValueError, match="parallelism"):
-                asyncio.run(
-                    search_tech_debt(create_session, [Path("src")], parallelism)
-                )
+                asyncio.run(_run_search(create_session, [Path("src")], parallelism))
 
             create_session.assert_not_called()
 
@@ -195,13 +206,17 @@ def test_search_tech_debt_returns_only_rechecked_findings():
     )
 
     result = asyncio.run(
-        search_tech_debt(lambda: session, [Path("src"), Path("tests")], parallelism=1)
+        _run_search(lambda: session, [Path("src"), Path("tests")], parallelism=1)
     )
 
     assert result == [confirmed]
     calls = session.next_turn.await_args_list
     assert len(calls) == 3
-    assert calls[0].args == (_SEARCH_PROMPTS[0].format(paths="src, tests"),)
+    assert calls[0].args == (
+        _SEARCH_PROMPTS[0].format(
+            paths=", ".join(str(Path(path).resolve()) for path in ("src", "tests"))
+        ),
+    )
     assert isinstance(calls[-1].args[1], TypeAdapter)
     assert calls[-1].args[1].json_schema() == TypeAdapter(list[Defect]).json_schema()
 
@@ -230,7 +245,7 @@ def test_search_tech_debt_collects_findings_from_all_search_scopes():
         spec_set=AgentSession, next_turn=AsyncMock(return_value=defects)
     )
     result = asyncio.run(
-        search_tech_debt(
+        _run_search(
             Mock(side_effect=[distributor, *sessions, deduplicator]),
             [Path("src")],
             parallelism=2,
@@ -277,7 +292,7 @@ def test_search_tech_debt_deduplicates_findings_in_one_final_session():
 
     create_session = Mock(side_effect=create)
 
-    result = asyncio.run(search_tech_debt(create_session, [Path("src")], parallelism=2))
+    result = asyncio.run(_run_search(create_session, [Path("src")], parallelism=2))
 
     assert create_session.call_count == 4
     deduplicator.next_turn.assert_awaited_once()
@@ -313,14 +328,16 @@ def test_search_tech_debt_corrects_relative_paths_in_the_same_session(subtests):
             create_session = Mock(side_effect=[distributor, *sessions, deduplicator])
 
             result = asyncio.run(
-                search_tech_debt(create_session, [Path("src").resolve()], parallelism=2)
+                _run_search(create_session, [Path("src").resolve()], parallelism=2)
             )
 
             assert result == []
             assert create_session.call_count == 4
             assert distributor.next_turn.await_count == 2
             initial_call, correction_call = distributor.next_turn.await_args_list
-            assert correction_call.args[0] == ABSOLUTE_PATHS_PROMPT
+            assert correction_call.args[0] == CORRECT_PATH_DISTRIBUTION_PROMPT.format(
+                errors="Path distribution must contain only absolute paths"
+            )
             assert correction_call.args[1] is initial_call.args[1]
             for session, scope in zip(sessions, corrected, strict=True):
                 assert session.next_turn.await_args_list[0].args[0] == (
@@ -337,9 +354,7 @@ def test_search_tech_debt_rejects_relative_paths_after_one_correction():
     create_session = Mock(side_effect=[distributor])
 
     with pytest.raises(ValueError, match="only absolute paths"):
-        asyncio.run(
-            search_tech_debt(create_session, [Path("src").resolve()], parallelism=2)
-        )
+        asyncio.run(_run_search(create_session, [Path("src").resolve()], parallelism=2))
 
     create_session.assert_called_once_with()
     assert distributor.next_turn.await_count == 2

@@ -2,8 +2,8 @@ DISTRIBUTE_PATHS_PROMPT = (
     "Divide these project paths into {parallelism} balanced, non-overlapping "
     "search scopes covering all specified paths: {paths}"
 )
-ABSOLUTE_PATHS_PROMPT = (
-    "Return the corrected path distribution using only absolute paths"
+CORRECT_PATH_DISTRIBUTION_PROMPT = (
+    "Correct the path distribution to resolve these validation errors: {errors}"
 )
 SEARCH_TECH_DEBT_PROMPT = "Search technical debt within these project paths: {paths}"
 FORMAT_FINDINGS_PROMPT = "Format the findings according to the provided schema"
