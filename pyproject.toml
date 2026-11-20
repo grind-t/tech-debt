@@ -1,7 +1,7 @@
 [project]
 name = "grind-t-tech-debt"
 version = "0.1.0"
-description = "Tools for managing technical debt."
+description = "Tool for managing technical debt."
 license = "ISC"
 authors = [
     { name = "grind-t", email = "grindt.gd@gmail.com" }
