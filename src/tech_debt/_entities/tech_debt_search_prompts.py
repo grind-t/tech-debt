@@ -11,7 +11,7 @@ RECHECK_FINDINGS_PROMPT = (
     "and any findings you are uncertain about"
 )
 DEDUPLICATE_FINDINGS_PROMPT = (
-    "Find and remove duplicate defects from these findings: {findings}"
+    "Find and remove semantically duplicate defects: {findings}"
 )
 
 TECH_DEBT_SEARCH_PROMPTS: Final[tuple[str, ...]] = (
