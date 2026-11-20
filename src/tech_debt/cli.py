@@ -12,6 +12,7 @@ from pydantic import TypeAdapter
 
 from tech_debt._entities.defect import Defect
 from tech_debt._stateful_effects.codex_session import CodexSession
+from tech_debt._stateless_computations.format_search_error import format_search_error
 from tech_debt._stateless_effects.list_codex_models import list_codex_models
 from tech_debt._stateless_effects.read_agent_settings import read_agent_settings
 from tech_debt._stateless_workflows.search_tech_debt import search_tech_debt
@@ -74,7 +75,7 @@ def _search(
         subprocess.CalledProcessError,
         ExceptionGroup,
     ) as error:
-        parser.exit(status=1, message=f"Search failed: {error}\n")
+        parser.exit(status=1, message=f"Search failed:\n{format_search_error(error)}\n")
     sys.stdout.write(
         TypeAdapter(list[Defect]).dump_json(defects, indent=2).decode("utf-8")
     )
