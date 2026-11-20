@@ -5,25 +5,23 @@ from typing import Protocol, overload
 from pydantic import BaseModel
 
 
-class ExecutePrompt(Protocol):
+class AgentSession(Protocol):
     @overload
-    async def __call__[Response: BaseModel](
+    async def next_turn[Response: BaseModel](
         self, prompt: str, schema: type[Response], /
-    ) -> tuple[Response, ExecutePrompt]: ...
+    ) -> Response: ...
 
     @overload
-    async def __call__(
-        self, prompt: str, schema: None = None, /
-    ) -> tuple[str, ExecutePrompt]: ...
+    async def next_turn(self, prompt: str, schema: None = None, /) -> str: ...
 
 
 async def search_tech_debt(
-    execute_prompt: ExecutePrompt, paths: Sequence[Path], parallelism: int
+    session: AgentSession, paths: Sequence[Path], parallelism: int
 ) -> None:
     """Search technical debt using ``parallelism`` concurrent search sessions."""
 
 
 async def _search_tech_debt_session(
-    execute_prompt: ExecutePrompt, paths: Sequence[Path]
+    session: AgentSession, paths: Sequence[Path]
 ) -> None:
     pass
