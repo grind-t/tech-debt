@@ -1,4 +1,4 @@
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Protocol, overload
 
@@ -16,7 +16,7 @@ class AgentSession(Protocol):
 
 
 async def search_tech_debt(
-    session: AgentSession, paths: Sequence[Path], parallelism: int
+    create_session: Callable[[], AgentSession], paths: Sequence[Path], parallelism: int
 ) -> None:
     """Search technical debt using ``parallelism`` concurrent search sessions."""
 
