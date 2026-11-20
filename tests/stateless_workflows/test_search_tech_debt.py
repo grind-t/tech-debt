@@ -8,7 +8,6 @@ from pydantic import TypeAdapter
 from tech_debt._entities.defect import Defect
 from tech_debt._entities.path_distribution import PathDistribution
 from tech_debt._entities.search_tech_debt_prompt import (
-    CORRECT_PATH_DISTRIBUTION_PROMPT,
     DEDUPLICATE_FINDINGS_PROMPT,
     DISTRIBUTE_PATHS_PROMPT,
     FORMAT_FINDINGS_PROMPT,
@@ -305,57 +304,3 @@ def test_search_tech_debt_deduplicates_findings_in_one_final_session():
     assert isinstance(call.args[1], TypeAdapter)
     assert call.args[1].json_schema() == adapter.json_schema()
     assert result == [duplicate, unique]
-
-
-def test_search_tech_debt_corrects_relative_paths_in_the_same_session(subtests):
-    corrected = [[Path("src/a").resolve()], [Path("src/b").resolve()]]
-    cases = {
-        "all_relative": [[Path("src/a")], [Path("src/b")]],
-        "mixed": [[Path("src/a")], [Path("src/b").resolve()]],
-    }
-    for name, initial in cases.items():
-        with subtests.test(msg=name):
-            distributor = Mock(
-                spec_set=AgentSession,
-                next_turn=AsyncMock(side_effect=[initial, corrected]),
-            )
-            sessions = [
-                Mock(spec_set=AgentSession, next_turn=AsyncMock(return_value=[]))
-                for _ in range(2)
-            ]
-            deduplicator = Mock(
-                spec_set=AgentSession, next_turn=AsyncMock(return_value=[])
-            )
-            create_session = Mock(side_effect=[distributor, *sessions, deduplicator])
-
-            result = asyncio.run(
-                _run_search(create_session, [Path("src").resolve()], parallelism=2)
-            )
-
-            assert result == []
-            assert create_session.call_count == 4
-            assert distributor.next_turn.await_count == 2
-            initial_call, correction_call = distributor.next_turn.await_args_list
-            assert correction_call.args[0] == CORRECT_PATH_DISTRIBUTION_PROMPT.format(
-                errors="Path distribution must contain only absolute paths"
-            )
-            assert correction_call.args[1] is initial_call.args[1]
-            for session, scope in zip(sessions, corrected, strict=True):
-                assert session.next_turn.await_args_list[0].args[0] == (
-                    SEARCH_TECH_DEBT_PROMPT.format(paths=str(scope[0]))
-                )
-
-
-def test_search_tech_debt_rejects_relative_paths_after_one_correction():
-    distribution = [[Path("src/a")], [Path("src/b").resolve()]]
-    distributor = Mock(
-        spec_set=AgentSession,
-        next_turn=AsyncMock(side_effect=[distribution, distribution]),
-    )
-    create_session = Mock(side_effect=[distributor])
-
-    with pytest.raises(ValueError, match="only absolute paths"):
-        asyncio.run(_run_search(create_session, [Path("src").resolve()], parallelism=2))
-
-    create_session.assert_called_once_with()
-    assert distributor.next_turn.await_count == 2

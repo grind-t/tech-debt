@@ -85,15 +85,10 @@ async def _distribute_paths(
             distribution = await session.next_turn(prompt, distribution_schema)
             if any(not path.is_absolute() for scope in distribution for path in scope):
                 raise ValueError("Path distribution must contain only absolute paths")
-            try:
-                normalized = [
-                    await asyncio.to_thread(normalize_paths, scope)
-                    for scope in distribution
-                ]
-            except OSError as error:
-                raise ValueError(
-                    f"Cannot resolve distributed search paths: {error}"
-                ) from error
+            normalized = [
+                await asyncio.to_thread(normalize_paths, scope)
+                for scope in distribution
+            ]
             validate_path_distribution(paths, normalized, parallelism, files)
             return normalized
         except ValueError as error:

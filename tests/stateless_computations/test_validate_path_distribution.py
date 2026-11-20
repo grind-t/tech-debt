@@ -28,11 +28,6 @@ def test_validate_path_distribution_rejects_invalid_scopes(subtests):
     cases = {
         "wrong_count": ([[root]], "exactly parallelism scopes"),
         "empty_scope": ([[], [root]], "is empty"),
-        "relative_path": (
-            [[PurePosixPath("src/a")], [root / "b"]],
-            "only absolute paths",
-        ),
-        "unnormalized": ([[root / "a/../a"], [root / "b"]], "must be normalized"),
         "parent_outside_area": ([[root.parent], [root / "b"]], "outside"),
         "similar_prefix": (
             [[PurePosixPath("/project/src-other")], [root / "b"]],

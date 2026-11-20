@@ -13,6 +13,7 @@ def test_list_search_files_handles_links_and_cycles_inside_search_roots(tmp_path
     outside = tmp_path / "outside.py"
     outside.write_text("", encoding="utf-8")
     (root / "outside").symlink_to(outside)
+    (root / "broken").symlink_to(tmp_path / "missing.py")
 
     result = list_search_files([root, nested])
 

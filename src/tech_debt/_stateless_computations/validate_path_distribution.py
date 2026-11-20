@@ -15,17 +15,11 @@ def validate_path_distribution(
     for index, scope in enumerate(distribution):
         if not scope:
             errors.append(f"Search scope {index + 1} is empty")
-        for path in scope:
-            if not path.is_absolute():
-                errors.append(
-                    f"Path distribution must contain only absolute paths: {path}"
-                )
-            elif ".." in path.parts:
-                errors.append(f"Search path must be normalized: {path}")
-            elif not any(path.is_relative_to(root) for root in paths):
-                errors.append(
-                    f"Search path is outside the original search area: {path}"
-                )
+        errors.extend(
+            f"Search path is outside the original search area: {path}"
+            for path in scope
+            if not any(path.is_relative_to(root) for root in paths)
+        )
 
     for index, scope in enumerate(distribution):
         for other in distribution[index + 1 :]:

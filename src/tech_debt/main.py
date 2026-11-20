@@ -68,7 +68,7 @@ def _search(
         defects = asyncio.run(
             search_tech_debt(
                 partial(CodexSession, settings),
-                [path.resolve() for path in paths],
+                paths,
                 parallelism,
                 normalize_paths=normalize_search_paths,
                 list_files=list_search_files,
