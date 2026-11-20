@@ -1,5 +1,3 @@
-from typing import Final
-
 DISTRIBUTE_PATHS_PROMPT = (
     "Divide these project paths into {parallelism} balanced, non-overlapping "
     "search scopes covering all specified paths: {paths}"
@@ -12,10 +10,4 @@ RECHECK_FINDINGS_PROMPT = (
 )
 DEDUPLICATE_FINDINGS_PROMPT = (
     "Find and remove semantically duplicate defects: {findings}"
-)
-
-TECH_DEBT_SEARCH_PROMPTS: Final[tuple[str, ...]] = (
-    SEARCH_TECH_DEBT_PROMPT,
-    FORMAT_FINDINGS_PROMPT,
-    RECHECK_FINDINGS_PROMPT,
 )

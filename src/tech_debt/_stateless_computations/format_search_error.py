@@ -1,11 +1,17 @@
-from subprocess import CalledProcessError
+from typing import Protocol, runtime_checkable
+
+
+@runtime_checkable
+class _ProcessFailure(Protocol):
+    returncode: int
+    stderr: str | bytes | None
 
 
 def format_search_error(error: BaseException) -> str:
     """Describe search failures, preserving Codex stderr and grouped causes."""
     if isinstance(error, BaseExceptionGroup):
         return "\n\n".join(format_search_error(cause) for cause in error.exceptions)
-    if isinstance(error, CalledProcessError):
+    if isinstance(error, _ProcessFailure):
         message = f"Codex exited with code {error.returncode}."
         detail = error.stderr
         if isinstance(detail, bytes):

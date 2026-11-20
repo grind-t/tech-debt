@@ -12,7 +12,7 @@ dependencies = [
 ]
 
 [project.scripts]
-tech-debt = "tech_debt.cli:main"
+tech-debt = "tech_debt:main"
 
 [project.urls]
 Homepage = "https://github.com/grind-t/tech-debt"
@@ -54,7 +54,6 @@ lint = [
     { cmd = "ruff check" },
     { cmd = "lint-imports --no-logo" },
     { cmd = "lint-rules src" },
-    { cmd = "vulture src" },
 ]
 typecheck = "ty check"
 test = "pytest"
@@ -69,7 +68,6 @@ dev = [
     "pytest",
     "ruff",
     "ty",
-    "vulture",
 ]
 
 # ---------- Architecture rules enforced by lint-imports ----------

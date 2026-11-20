@@ -1,13 +1,13 @@
 import asyncio
 from collections.abc import Callable, Sequence
-from pathlib import Path
+from pathlib import PurePath
 from typing import Protocol, overload
 
 from pydantic import TypeAdapter
 
 from tech_debt._entities.defect import Defect
 from tech_debt._entities.path_distribution import PathDistribution
-from tech_debt._entities.tech_debt_search_prompts import (
+from tech_debt._entities.search_tech_debt_prompt import (
     DEDUPLICATE_FINDINGS_PROMPT,
     DISTRIBUTE_PATHS_PROMPT,
     FORMAT_FINDINGS_PROMPT,
@@ -27,7 +27,9 @@ class AgentSession(Protocol):
 
 
 async def search_tech_debt(
-    create_session: Callable[[], AgentSession], paths: Sequence[Path], parallelism: int
+    create_session: Callable[[], AgentSession],
+    paths: Sequence[PurePath],
+    parallelism: int,
 ) -> list[Defect]:
     """Search technical debt using ``parallelism`` concurrent search sessions."""
     if parallelism < 1:
@@ -62,7 +64,7 @@ async def search_tech_debt(
 
 
 async def _search_tech_debt_session(
-    session: AgentSession, paths: Sequence[Path]
+    session: AgentSession, paths: Sequence[PurePath]
 ) -> list[Defect]:
     await session.next_turn(
         SEARCH_TECH_DEBT_PROMPT.format(paths=", ".join(map(str, paths)))

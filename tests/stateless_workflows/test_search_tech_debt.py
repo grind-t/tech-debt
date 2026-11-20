@@ -7,14 +7,22 @@ from pydantic import TypeAdapter
 
 from tech_debt._entities.defect import Defect
 from tech_debt._entities.path_distribution import PathDistribution
-from tech_debt._entities.tech_debt_search_prompts import (
+from tech_debt._entities.search_tech_debt_prompt import (
     DEDUPLICATE_FINDINGS_PROMPT,
     DISTRIBUTE_PATHS_PROMPT,
-    TECH_DEBT_SEARCH_PROMPTS,
+    FORMAT_FINDINGS_PROMPT,
+    RECHECK_FINDINGS_PROMPT,
+    SEARCH_TECH_DEBT_PROMPT,
 )
 from tech_debt._stateless_workflows.search_tech_debt import (
     AgentSession,
     search_tech_debt,
+)
+
+_SEARCH_PROMPTS = (
+    SEARCH_TECH_DEBT_PROMPT,
+    FORMAT_FINDINGS_PROMPT,
+    RECHECK_FINDINGS_PROMPT,
 )
 
 
@@ -61,11 +69,9 @@ def test_search_tech_debt_skips_distribution_for_single_search_session():
     asyncio.run(search_tech_debt(create_session, [Path("src")], parallelism=1))
 
     create_session.assert_called_once_with()
-    assert session.next_turn.await_count == len(TECH_DEBT_SEARCH_PROMPTS)
+    assert session.next_turn.await_count == len(_SEARCH_PROMPTS)
     actual_prompts = [call.args[0] for call in session.next_turn.await_args_list]
-    expected_prompts = [
-        prompt.format(paths="src") for prompt in TECH_DEBT_SEARCH_PROMPTS
-    ]
+    expected_prompts = [prompt.format(paths="src") for prompt in _SEARCH_PROMPTS]
     assert actual_prompts == expected_prompts
 
 
@@ -118,10 +124,9 @@ def test_search_tech_debt_awaits_all_prompts_in_order_for_each_search_scope(subt
         zip(search_sessions, distribution, strict=True)
     ):
         with subtests.test(session=index):
-            assert session.next_turn.await_count == len(TECH_DEBT_SEARCH_PROMPTS)
+            assert session.next_turn.await_count == len(_SEARCH_PROMPTS)
             expected_prompts = [
-                prompt.format(paths=str(scope[0]))
-                for prompt in TECH_DEBT_SEARCH_PROMPTS
+                prompt.format(paths=str(scope[0])) for prompt in _SEARCH_PROMPTS
             ]
             actual_prompts = [
                 call.args[0] for call in session.next_turn.await_args_list
@@ -189,7 +194,7 @@ def test_search_tech_debt_returns_only_rechecked_findings():
     assert result == [confirmed]
     calls = session.next_turn.await_args_list
     assert len(calls) == 3
-    assert calls[0].args == (TECH_DEBT_SEARCH_PROMPTS[0].format(paths="src, tests"),)
+    assert calls[0].args == (_SEARCH_PROMPTS[0].format(paths="src, tests"),)
     assert isinstance(calls[-1].args[1], TypeAdapter)
     assert calls[-1].args[1].json_schema() == TypeAdapter(list[Defect]).json_schema()
 
@@ -256,7 +261,7 @@ def test_search_tech_debt_deduplicates_findings_in_one_final_session():
         index = create_session.call_count - 1
         if index == len(sessions) - 1:
             assert all(
-                session.next_turn.await_count == len(TECH_DEBT_SEARCH_PROMPTS)
+                session.next_turn.await_count == len(_SEARCH_PROMPTS)
                 for session in search_sessions
             )
         return sessions[index]
