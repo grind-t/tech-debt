@@ -11,3 +11,4 @@ wheels/
 
 # Environment
 .env
+.tech-debt.toml
