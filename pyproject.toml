@@ -11,6 +11,9 @@ dependencies = [
     "pydantic>=2.14.4",
 ]
 
+[project.scripts]
+tech-debt = "tech_debt.cli:main"
+
 [project.urls]
 Homepage = "https://github.com/grind-t/tech-debt"
 Issues = "https://github.com/grind-t/tech-debt/issues"
