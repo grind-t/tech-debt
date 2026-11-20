@@ -130,7 +130,10 @@ _WORST_CREDIBLE_RISK_EXAMPLE = {
 
 class _Risk(BaseModel):
     event: str = Field(
-        description="Event that existing tests, checks, and monitoring would miss.",
+        description=(
+            "A real event that could occur and would not be detected by "
+            "existing tests, checks, or monitoring."
+        ),
     )
     consequence: str = Field(
         description=(
