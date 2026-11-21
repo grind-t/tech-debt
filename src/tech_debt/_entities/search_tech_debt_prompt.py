@@ -5,11 +5,10 @@ DISTRIBUTE_PATHS_PROMPT = (
 CORRECT_PATH_DISTRIBUTION_PROMPT = (
     "Correct the path distribution to resolve these validation errors: {errors}"
 )
-SEARCH_TECH_DEBT_PROMPT = "Search technical debt within these project paths: {paths}"
-FORMAT_FINDINGS_PROMPT = "Format the findings according to the provided schema"
+SEARCH_TECH_DEBT_PROMPT = "Search for technical debt in {paths}"
 RECHECK_FINDINGS_PROMPT = (
-    "Recheck all findings and remove false positives "
-    "and any findings you are uncertain about"
+    "Recheck all findings, remove false positives and format "
+    "the findings according to the provided schema"
 )
 DEDUPLICATE_FINDINGS_PROMPT = (
     "Find and remove semantically duplicate defects: {findings}"

@@ -10,7 +10,6 @@ from tech_debt._entities.path_distribution import PathDistribution
 from tech_debt._entities.search_tech_debt_prompt import (
     DEDUPLICATE_FINDINGS_PROMPT,
     DISTRIBUTE_PATHS_PROMPT,
-    FORMAT_FINDINGS_PROMPT,
     RECHECK_FINDINGS_PROMPT,
     SEARCH_TECH_DEBT_PROMPT,
 )
@@ -21,7 +20,6 @@ from tech_debt._stateless_workflows.search_tech_debt import (
 
 _SEARCH_PROMPTS = (
     SEARCH_TECH_DEBT_PROMPT,
-    FORMAT_FINDINGS_PROMPT,
     RECHECK_FINDINGS_PROMPT,
 )
 
@@ -199,7 +197,6 @@ def test_search_tech_debt_returns_only_rechecked_findings():
         next_turn=AsyncMock(
             side_effect=[
                 f"Potential defects: {removed.description}; {confirmed.description}",
-                [removed, confirmed],
                 [confirmed],
             ]
         ),
@@ -211,7 +208,7 @@ def test_search_tech_debt_returns_only_rechecked_findings():
 
     assert result == [confirmed]
     calls = session.next_turn.await_args_list
-    assert len(calls) == 3
+    assert len(calls) == 2
     assert calls[0].args == (
         _SEARCH_PROMPTS[0].format(
             paths=", ".join(str(Path(path).resolve()) for path in ("src", "tests"))
@@ -233,7 +230,6 @@ def test_search_tech_debt_collects_findings_from_all_search_scopes():
             next_turn=AsyncMock(
                 side_effect=[
                     "Initial findings",
-                    [defect],
                     [defect],
                 ]
             ),
@@ -271,7 +267,7 @@ def test_search_tech_debt_deduplicates_findings_in_one_final_session():
     search_sessions = [
         Mock(
             spec_set=AgentSession,
-            next_turn=AsyncMock(side_effect=["Initial findings", result, result]),
+            next_turn=AsyncMock(side_effect=["Initial findings", result]),
         )
         for result in findings
     ]

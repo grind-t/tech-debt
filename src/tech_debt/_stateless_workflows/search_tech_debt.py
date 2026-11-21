@@ -11,7 +11,6 @@ from tech_debt._entities.search_tech_debt_prompt import (
     CORRECT_PATH_DISTRIBUTION_PROMPT,
     DEDUPLICATE_FINDINGS_PROMPT,
     DISTRIBUTE_PATHS_PROMPT,
-    FORMAT_FINDINGS_PROMPT,
     RECHECK_FINDINGS_PROMPT,
     SEARCH_TECH_DEBT_PROMPT,
 )
@@ -105,5 +104,4 @@ async def _search_tech_debt_session(
         SEARCH_TECH_DEBT_PROMPT.format(paths=", ".join(map(str, paths)))
     )
     schema = TypeAdapter(list[Defect])
-    await session.next_turn(FORMAT_FINDINGS_PROMPT, schema)
     return await session.next_turn(RECHECK_FINDINGS_PROMPT, schema)
