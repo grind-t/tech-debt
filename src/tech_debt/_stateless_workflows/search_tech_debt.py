@@ -6,6 +6,7 @@ from typing import Protocol, overload
 from pydantic import TypeAdapter
 
 from tech_debt._entities.defect import Defect
+from tech_debt._entities.minimal_findings import MinimalFindings
 from tech_debt._entities.path_distribution import PathDistribution
 from tech_debt._entities.search_tech_debt_prompt import (
     CORRECT_PATH_DISTRIBUTION_PROMPT,
@@ -101,7 +102,8 @@ async def _search_tech_debt_session(
     session: AgentSession, paths: Sequence[PurePath]
 ) -> list[Defect]:
     await session.next_turn(
-        SEARCH_TECH_DEBT_PROMPT.format(paths=", ".join(map(str, paths)))
+        SEARCH_TECH_DEBT_PROMPT.format(paths=", ".join(map(str, paths))),
+        TypeAdapter(MinimalFindings),
     )
     schema = TypeAdapter(list[Defect])
     return await session.next_turn(RECHECK_FINDINGS_PROMPT, schema)

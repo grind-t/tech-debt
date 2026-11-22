@@ -6,6 +6,7 @@ import pytest
 from pydantic import TypeAdapter
 
 from tech_debt._entities.defect import Defect
+from tech_debt._entities.minimal_findings import MinimalFindings
 from tech_debt._entities.path_distribution import PathDistribution
 from tech_debt._entities.search_tech_debt_prompt import (
     DEDUPLICATE_FINDINGS_PROMPT,
@@ -149,6 +150,11 @@ def test_search_tech_debt_awaits_all_prompts_in_order_for_each_search_scope(subt
                 call.args[0] for call in session.next_turn.await_args_list
             ]
             assert actual_prompts == expected_prompts
+            adapters = [call.args[1] for call in session.next_turn.await_args_list]
+            assert [adapter.json_schema() for adapter in adapters] == [
+                TypeAdapter(MinimalFindings).json_schema(),
+                TypeAdapter(list[Defect]).json_schema(),
+            ]
 
 
 def test_search_tech_debt_rejects_nonpositive_parallelism(subtests):
@@ -189,6 +195,17 @@ def _defect(description):
     )
 
 
+def _minimal_findings(defects):
+    return MinimalFindings.model_validate(
+        {
+            "findings": [
+                defect.model_dump(include={"description", "location"})
+                for defect in defects
+            ]
+        }
+    )
+
+
 def test_search_tech_debt_returns_only_rechecked_findings():
     removed = _defect("False positive")
     confirmed = _defect("Confirmed defect")
@@ -196,7 +213,7 @@ def test_search_tech_debt_returns_only_rechecked_findings():
         spec_set=AgentSession,
         next_turn=AsyncMock(
             side_effect=[
-                f"Potential defects: {removed.description}; {confirmed.description}",
+                _minimal_findings([removed, confirmed]),
                 [confirmed],
             ]
         ),
@@ -209,11 +226,15 @@ def test_search_tech_debt_returns_only_rechecked_findings():
     assert result == [confirmed]
     calls = session.next_turn.await_args_list
     assert len(calls) == 2
-    assert calls[0].args == (
-        _SEARCH_PROMPTS[0].format(
-            paths=", ".join(str(Path(path).resolve()) for path in ("src", "tests"))
-        ),
+    assert calls[0].args[0] == _SEARCH_PROMPTS[0].format(
+        paths=", ".join(str(Path(path).resolve()) for path in ("src", "tests"))
     )
+    assert isinstance(calls[0].args[1], TypeAdapter)
+    first_schema = calls[0].args[1]
+    assert first_schema.json_schema() == TypeAdapter(MinimalFindings).json_schema()
+    assert first_schema.validate_json(
+        '{"findings": [{"description": "Candidate", "location": "src/orders.py"}]}'
+    ) == _minimal_findings([_defect("Candidate")])
     assert isinstance(calls[-1].args[1], TypeAdapter)
     assert calls[-1].args[1].json_schema() == TypeAdapter(list[Defect]).json_schema()
 
@@ -229,7 +250,7 @@ def test_search_tech_debt_collects_findings_from_all_search_scopes():
             spec_set=AgentSession,
             next_turn=AsyncMock(
                 side_effect=[
-                    "Initial findings",
+                    _minimal_findings([defect]),
                     [defect],
                 ]
             ),
@@ -267,7 +288,7 @@ def test_search_tech_debt_deduplicates_findings_in_one_final_session():
     search_sessions = [
         Mock(
             spec_set=AgentSession,
-            next_turn=AsyncMock(side_effect=["Initial findings", result]),
+            next_turn=AsyncMock(side_effect=[_minimal_findings(result), result]),
         )
         for result in findings
     ]
