@@ -8,7 +8,6 @@ from pydantic import TypeAdapter
 from tech_debt._entities.defect import Defect
 from tech_debt._entities.minimal_findings import MinimalFindings
 from tech_debt._entities.search_tech_debt_prompt import (
-    DEDUPLICATE_FINDINGS_PROMPT,
     FORMAT_FINDINGS_PROMPT,
     SEARCH_TECH_DEBT_PROMPT,
 )
@@ -58,15 +57,7 @@ async def search_tech_debt(
             group.create_task(_search_tech_debt_session(create_session(), scope))
             for scope in distribution
         ]
-    defects = [defect for search in searches for defect in search.result()]
-    schema = TypeAdapter(list[Defect])
-    deduplicator = create_session()
-    return await deduplicator.next_turn(
-        DEDUPLICATE_FINDINGS_PROMPT.format(
-            findings=schema.dump_json(defects).decode("utf-8")
-        ),
-        schema,
-    )
+    return [defect for search in searches for defect in search.result()]
 
 
 async def _search_tech_debt_session(

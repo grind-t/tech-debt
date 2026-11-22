@@ -8,7 +8,6 @@ from pydantic import TypeAdapter
 from tech_debt._entities.defect import Defect
 from tech_debt._entities.minimal_findings import MinimalFindings
 from tech_debt._entities.search_tech_debt_prompt import (
-    DEDUPLICATE_FINDINGS_PROMPT,
     FORMAT_FINDINGS_PROMPT,
     SEARCH_TECH_DEBT_PROMPT,
 )
@@ -42,7 +41,7 @@ async def _run_search(create_session, paths, parallelism, *, distribution=None):
         )
 
 
-def test_search_tech_debt_creates_search_sessions_and_deduplicator(subtests):
+def test_search_tech_debt_creates_one_session_per_scope(subtests):
     cases = {
         "multiple_search_sessions_boundary": 2,
         "multiple_search_sessions": 5,
@@ -56,16 +55,13 @@ def test_search_tech_debt_creates_search_sessions_and_deduplicator(subtests):
                 )
                 for _ in range(parallelism)
             ]
-            deduplicator = Mock(
-                spec_set=AgentSession, next_turn=AsyncMock(return_value=[])
-            )
-            create_session = Mock(side_effect=[*search_sessions, deduplicator])
+            create_session = Mock(side_effect=search_sessions)
 
             asyncio.run(
                 _run_search(create_session, [PurePosixPath("src")], parallelism)
             )
 
-            assert create_session.call_count == parallelism + 1
+            assert create_session.call_count == parallelism
 
 
 def test_search_tech_debt_skips_distribution_for_single_search_session():
@@ -99,8 +95,7 @@ def test_search_tech_debt_awaits_all_prompts_in_order_for_each_search_scope(subt
         )
         for _ in distribution
     ]
-    deduplicator = Mock(spec_set=AgentSession, next_turn=AsyncMock(return_value=[]))
-    create_session = Mock(side_effect=[*search_sessions, deduplicator])
+    create_session = Mock(side_effect=search_sessions)
 
     asyncio.run(
         _run_search(
@@ -170,10 +165,7 @@ def test_search_tech_debt_logs_and_uses_reduced_parallelism(subtests):
                 Mock(spec_set=AgentSession, next_turn=AsyncMock(return_value=[]))
                 for _ in scopes
             ]
-            deduplicator = Mock(
-                spec_set=AgentSession, next_turn=AsyncMock(return_value=[])
-            )
-            create_session = Mock(side_effect=[*sessions, deduplicator])
+            create_session = Mock(side_effect=sessions)
             log_info = Mock()
             with patch(_DISTRIBUTE_PATHS, return_value=scopes):
                 result = asyncio.run(
@@ -193,12 +185,11 @@ def test_search_tech_debt_logs_and_uses_reduced_parallelism(subtests):
             log_info.assert_called_once_with(
                 f"Reduced parallelism from 3 to {scope_count}."
             )
-            assert create_session.call_count == scope_count + (scope_count > 1)
+            assert create_session.call_count == scope_count
             for session, scope in zip(sessions, scopes, strict=True):
                 assert session.next_turn.await_args_list[0].args[0] == (
                     SEARCH_TECH_DEBT_PROMPT.format(paths=str(scope[0]))
                 )
-            assert deduplicator.next_turn.await_count == (scope_count > 1)
 
 
 def test_search_tech_debt_rejects_nonpositive_parallelism(subtests):
@@ -287,39 +278,11 @@ def test_search_tech_debt_returns_formatted_findings_including_not_applicable_ri
     assert calls[-1].args[1].json_schema() == TypeAdapter(list[Defect]).json_schema()
 
 
-def test_search_tech_debt_collects_findings_from_all_search_scopes():
-    defects = [_defect("Orders defect"), _defect("Billing defect")]
-    sessions = [
-        Mock(
-            spec_set=AgentSession,
-            next_turn=AsyncMock(
-                side_effect=[
-                    _minimal_findings([defect]),
-                    [defect],
-                ]
-            ),
-        )
-        for defect in defects
-    ]
-
-    deduplicator = Mock(
-        spec_set=AgentSession, next_turn=AsyncMock(return_value=defects)
-    )
-    result = asyncio.run(
-        _run_search(
-            Mock(side_effect=[*sessions, deduplicator]),
-            [PurePosixPath("src")],
-            parallelism=2,
-        )
-    )
-
-    assert result == defects
-
-
-def test_search_tech_debt_deduplicates_findings_in_one_final_session():
-    duplicate = _defect("Duplicated finding")
-    unique = _defect("Unique finding")
-    findings = [[duplicate], [duplicate, unique]]
+def test_search_tech_debt_returns_all_findings_in_scope_order():
+    orders = _defect("Orders defect")
+    shared = _defect("Finding reported by both scopes")
+    billing = _defect("Billing defect")
+    findings = [[orders, shared], [shared, billing]]
     search_sessions = [
         Mock(
             spec_set=AgentSession,
@@ -327,34 +290,11 @@ def test_search_tech_debt_deduplicates_findings_in_one_final_session():
         )
         for result in findings
     ]
-    deduplicator = Mock(
-        spec_set=AgentSession,
-        next_turn=AsyncMock(return_value=[duplicate, unique]),
-    )
-    sessions = [*search_sessions, deduplicator]
-
-    def create():
-        index = create_session.call_count - 1
-        if index == len(sessions) - 1:
-            assert all(
-                session.next_turn.await_count == len(_SEARCH_PROMPTS)
-                for session in search_sessions
-            )
-        return sessions[index]
-
-    create_session = Mock(side_effect=create)
+    create_session = Mock(side_effect=search_sessions)
 
     result = asyncio.run(
         _run_search(create_session, [PurePosixPath("src")], parallelism=2)
     )
 
-    assert create_session.call_count == 3
-    deduplicator.next_turn.assert_awaited_once()
-    call = deduplicator.next_turn.await_args
-    adapter = TypeAdapter(list[Defect])
-    assert call.args[0] == DEDUPLICATE_FINDINGS_PROMPT.format(
-        findings=adapter.dump_json([duplicate, duplicate, unique]).decode("utf-8")
-    )
-    assert isinstance(call.args[1], TypeAdapter)
-    assert call.args[1].json_schema() == adapter.json_schema()
-    assert result == [duplicate, unique]
+    assert create_session.call_count == 2
+    assert result == [orders, shared, shared, billing]
