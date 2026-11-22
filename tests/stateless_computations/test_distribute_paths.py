@@ -1,8 +1,6 @@
 from itertools import combinations
 from pathlib import PurePath, PurePosixPath
 
-import pytest
-
 from tech_debt._stateless_computations.distribute_paths import distribute_paths
 
 
@@ -127,9 +125,17 @@ def test_distribute_paths_is_stable_with_overlapping_and_explicit_roots():
     assert distribute_paths(paths[::-1], dict(reversed(files.items())), 2) == expected
 
 
-def test_distribute_paths_rejects_more_scopes_than_files():
+def test_distribute_paths_caps_scopes_at_the_number_of_files(subtests):
     root = PurePosixPath("/project")
-    files: dict[PurePath, int] = {root / "only.py": 42}
+    first, second = root / "first.py", root / "second.py"
+    cases: list[tuple[dict[PurePath, int], list[list[PurePath]]]] = [
+        ({}, []),
+        ({first: 42}, [[root]]),
+        ({first: 42, second: 10}, [[first], [second]]),
+    ]
+    for files, expected in cases:
+        with subtests.test(file_count=len(files)):
+            distribution = distribute_paths([root], files, 3)
 
-    with pytest.raises(ValueError, match="Cannot create 2 non-empty search scopes"):
-        distribute_paths([root], files, 2)
+            _assert_valid_distribution([root], files, len(files), distribution)
+            assert distribution == expected

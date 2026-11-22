@@ -9,14 +9,12 @@ def distribute_paths(
     files: Mapping[PurePath, int],
     parallelism: int,
 ) -> list[list[PurePath]]:
-    """Balance canonical paths by size while keeping subtrees together."""
+    """Balance paths by size in up to ``parallelism`` non-empty scopes."""
     if parallelism < 1:
         raise ValueError("parallelism must be greater than zero")
-    if len(files) < parallelism:
-        raise ValueError(
-            f"Cannot create {parallelism} non-empty search scopes from "
-            f"{len(files)} files. Reduce --parallelism or add search paths."
-        )
+    if not files:
+        return []
+    parallelism = min(parallelism, len(files))
 
     roots = set(paths)
     roots = {root for root in roots if roots.isdisjoint(root.parents)}

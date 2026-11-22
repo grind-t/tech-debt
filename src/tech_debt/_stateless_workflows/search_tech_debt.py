@@ -32,8 +32,9 @@ async def search_tech_debt(
     *,
     normalize_paths: Callable[[Sequence[PurePath]], list[PurePath]],
     list_files: Callable[[Sequence[PurePath]], Mapping[PurePath, int]],
+    log_info: Callable[[str], None],
 ) -> list[Defect]:
-    """Search technical debt using ``parallelism`` concurrent search sessions."""
+    """Search technical debt using up to ``parallelism`` concurrent search sessions."""
     if parallelism < 1:
         raise ValueError("parallelism must be greater than zero")
     if not paths:
@@ -44,6 +45,13 @@ async def search_tech_debt(
 
     files = await asyncio.to_thread(list_files, paths)
     distribution = distribute_paths(paths, files, parallelism)
+    effective_parallelism = len(distribution)
+    if effective_parallelism < parallelism:
+        log_info(f"Reduced parallelism from {parallelism} to {effective_parallelism}.")
+    if effective_parallelism == 0:
+        return []
+    if effective_parallelism == 1:
+        return await _search_tech_debt_session(create_session(), distribution[0])
 
     async with asyncio.TaskGroup() as group:
         searches = [

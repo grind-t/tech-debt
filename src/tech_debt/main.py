@@ -1,6 +1,7 @@
 import argparse
 import asyncio
 import json
+import logging
 import shutil
 import subprocess
 import sys
@@ -37,13 +38,14 @@ def main() -> None:
         "-p",
         type=int,
         default=1,
-        help="Number of parallel search sessions (default: 1)",
+        help="Maximum number of parallel search sessions (default: 1)",
     )
     args = parser.parse_args()
 
     if args.command == "init":
         _init(parser)
     elif args.command == "search":
+        logging.basicConfig(level=logging.INFO, format="%(message)s")
         _search(parser, args.paths, args.parallelism)
 
 
@@ -72,6 +74,7 @@ def _search(
                 parallelism,
                 normalize_paths=normalize_search_paths,
                 list_files=list_search_files,
+                log_info=logging.getLogger(__name__).info,
             )
         )
     except KeyboardInterrupt:

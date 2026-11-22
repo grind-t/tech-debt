@@ -38,6 +38,7 @@ async def _run_search(create_session, paths, parallelism, *, distribution=None):
             parallelism,
             normalize_paths=lambda values: [_PROJECT / path for path in values],
             list_files=lambda _: {},
+            log_info=Mock(),
         )
 
 
@@ -149,6 +150,7 @@ def test_search_tech_debt_aborts_before_starting_sessions_if_distribution_fails(
                 2,
                 normalize_paths=normalize_paths,
                 list_files=list_files,
+                log_info=Mock(),
             )
         )
 
@@ -156,6 +158,47 @@ def test_search_tech_debt_aborts_before_starting_sessions_if_distribution_fails(
     list_files.assert_called_once_with(normalized)
     distribute.assert_called_once_with(normalized, files, 2)
     create_session.assert_not_called()
+
+
+def test_search_tech_debt_logs_and_uses_reduced_parallelism(subtests):
+    root = _PROJECT / "src"
+    files = {root / "first.py": 20, root / "second.py": 10}
+    for scope_count in range(3):
+        with subtests.test(scope_count=scope_count):
+            scopes = [[file] for file in list(files)[:scope_count]]
+            sessions = [
+                Mock(spec_set=AgentSession, next_turn=AsyncMock(return_value=[]))
+                for _ in scopes
+            ]
+            deduplicator = Mock(
+                spec_set=AgentSession, next_turn=AsyncMock(return_value=[])
+            )
+            create_session = Mock(side_effect=[*sessions, deduplicator])
+            log_info = Mock()
+            with patch(_DISTRIBUTE_PATHS, return_value=scopes):
+                result = asyncio.run(
+                    search_tech_debt(
+                        create_session,
+                        [root],
+                        3,
+                        normalize_paths=list,
+                        list_files=Mock(
+                            return_value={scope[0]: files[scope[0]] for scope in scopes}
+                        ),
+                        log_info=log_info,
+                    )
+                )
+
+            assert result == []
+            log_info.assert_called_once_with(
+                f"Reduced parallelism from 3 to {scope_count}."
+            )
+            assert create_session.call_count == scope_count + (scope_count > 1)
+            for session, scope in zip(sessions, scopes, strict=True):
+                assert session.next_turn.await_args_list[0].args[0] == (
+                    SEARCH_TECH_DEBT_PROMPT.format(paths=str(scope[0]))
+                )
+            assert deduplicator.next_turn.await_count == (scope_count > 1)
 
 
 def test_search_tech_debt_rejects_nonpositive_parallelism(subtests):
