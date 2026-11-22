@@ -57,10 +57,17 @@ def test_defect_schema_is_ready_for_codex_without_normalization():
     assert {"type": "null"} in risks["properties"]["worst_credible"]["anyOf"]
 
 
-def test_defect_accepts_explicit_null_worst_credible():
-    defect = Defect.model_validate(_example())
+def test_defect_accepts_supported_likelihoods_with_null_worst_credible(subtests):
+    for likelihood in ("High", "Medium", "Low", "Not applicable"):
+        with subtests.test(likelihood=likelihood):
+            example = _example()
+            example["risks"]["most_likely"]["likelihood"] = likelihood
 
-    assert defect.risks.worst_credible is None
+            defect = Defect.model_validate(example)
+            restored = Defect.model_validate_json(defect.model_dump_json())
+
+            assert restored.risks.most_likely.likelihood == likelihood
+            assert restored.risks.worst_credible is None
 
 
 def test_defect_requires_worst_credible():

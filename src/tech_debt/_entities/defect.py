@@ -132,10 +132,7 @@ class _Risk(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     event: str = Field(
-        description=(
-            "A real event that could occur and would not be detected by "
-            "existing tests, checks, or monitoring."
-        ),
+        description="The event underlying this risk.",
     )
     consequence: str = Field(
         description=(
@@ -143,7 +140,13 @@ class _Risk(BaseModel):
             "of agents and people working with the system."
         ),
     )
-    likelihood: Literal["High", "Medium", "Low"]
+    likelihood: Literal["High", "Medium", "Low", "Not applicable"] = Field(
+        description=(
+            "Use 'Not applicable' if the event is unrealistic or "
+            "already caught by existing tests, checks, CI, or monitoring. "
+            "Otherwise, rate its likelihood as High, Medium, or Low."
+        ),
+    )
     severity: Literal["Blocking", "Critical", "Major", "Minor", "Inconsequential"]
 
 

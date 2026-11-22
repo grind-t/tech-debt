@@ -12,7 +12,7 @@ from tech_debt._entities.search_tech_debt_prompt import (
     CORRECT_PATH_DISTRIBUTION_PROMPT,
     DEDUPLICATE_FINDINGS_PROMPT,
     DISTRIBUTE_PATHS_PROMPT,
-    RECHECK_FINDINGS_PROMPT,
+    FORMAT_FINDINGS_PROMPT,
     SEARCH_TECH_DEBT_PROMPT,
 )
 from tech_debt._stateless_computations.validate_path_distribution import (
@@ -106,4 +106,4 @@ async def _search_tech_debt_session(
         TypeAdapter(MinimalFindings),
     )
     schema = TypeAdapter(list[Defect])
-    return await session.next_turn(RECHECK_FINDINGS_PROMPT, schema)
+    return await session.next_turn(FORMAT_FINDINGS_PROMPT, schema)

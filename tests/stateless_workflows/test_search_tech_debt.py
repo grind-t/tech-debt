@@ -11,7 +11,7 @@ from tech_debt._entities.path_distribution import PathDistribution
 from tech_debt._entities.search_tech_debt_prompt import (
     DEDUPLICATE_FINDINGS_PROMPT,
     DISTRIBUTE_PATHS_PROMPT,
-    RECHECK_FINDINGS_PROMPT,
+    FORMAT_FINDINGS_PROMPT,
     SEARCH_TECH_DEBT_PROMPT,
 )
 from tech_debt._stateless_workflows.search_tech_debt import (
@@ -21,7 +21,7 @@ from tech_debt._stateless_workflows.search_tech_debt import (
 
 _SEARCH_PROMPTS = (
     SEARCH_TECH_DEBT_PROMPT,
-    RECHECK_FINDINGS_PROMPT,
+    FORMAT_FINDINGS_PROMPT,
 )
 
 
@@ -206,15 +206,16 @@ def _minimal_findings(defects):
     )
 
 
-def test_search_tech_debt_returns_only_rechecked_findings():
-    removed = _defect("False positive")
+def test_search_tech_debt_returns_formatted_findings_including_not_applicable_risks():
+    not_applicable = _defect("Finding with an unrealistic risk")
+    not_applicable.risks.most_likely.likelihood = "Not applicable"
     confirmed = _defect("Confirmed defect")
     session = Mock(
         spec_set=AgentSession,
         next_turn=AsyncMock(
             side_effect=[
-                _minimal_findings([removed, confirmed]),
-                [confirmed],
+                _minimal_findings([not_applicable, confirmed]),
+                [not_applicable, confirmed],
             ]
         ),
     )
@@ -223,7 +224,7 @@ def test_search_tech_debt_returns_only_rechecked_findings():
         _run_search(lambda: session, [Path("src"), Path("tests")], parallelism=1)
     )
 
-    assert result == [confirmed]
+    assert result == [not_applicable, confirmed]
     calls = session.next_turn.await_args_list
     assert len(calls) == 2
     assert calls[0].args[0] == _SEARCH_PROMPTS[0].format(
