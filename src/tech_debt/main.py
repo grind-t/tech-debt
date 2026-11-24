@@ -31,7 +31,7 @@ def main() -> None:
         nargs="*",
         type=Path,
         default=[Path()],
-        help="Paths to search (default: .)",
+        help="Absolute paths or paths relative to the current directory (default: .)",
     )
     search.add_argument(
         "--parallelism",
@@ -57,7 +57,13 @@ def _search(
     try:
         settings = read_agent_settings()
     except FileNotFoundError:
-        parser.exit(status=1, message="Run 'tech-debt init' before searching.\n")
+        parser.exit(
+            status=1,
+            message=(
+                "No .tech-debt.toml in the current or home directory. "
+                "Run 'tech-debt init' in either directory before searching.\n"
+            ),
+        )
     except ValueError:
         parser.exit(
             status=1,

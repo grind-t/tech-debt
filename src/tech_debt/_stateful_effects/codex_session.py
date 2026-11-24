@@ -35,7 +35,13 @@ class CodexSession(AgentSession):
         async with self._lock:
             with TemporaryDirectory(prefix="tech-debt-codex-") as directory:
                 response_path = Path(directory) / "response.json"
-                command = ["codex", "exec", "--sandbox", "read-only"]
+                command = [
+                    "codex",
+                    "exec",
+                    "--sandbox",
+                    "read-only",
+                    "--skip-git-repo-check",
+                ]
                 if self._session_id is not None:
                     command.append("resume")
                 command.extend(

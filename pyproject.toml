@@ -1,6 +1,6 @@
 [project]
 name = "grind-t-tech-debt"
-version = "0.1.3"
+version = "0.1.4"
 description = "Tool for managing technical debt."
 license = "ISC"
 authors = [
